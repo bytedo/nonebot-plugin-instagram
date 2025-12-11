@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "nonebot-plugin-instagram"
+version = "0.1.0"
+description = "一个基于 RapidAPI 的 NoneBot2 Instagram 解析插件"
+authors = ["bytedo <49683326+bytedo@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/bytedo/nonebot-plugin-instagram"
+repository = "https://github.com/bytedo/nonebot-plugin-instagram"
+keywords = ["nonebot", "nonebot2", "instagram", "rapidapi"]
+
+packages = [
+    { include = "nonebot_plugin_instagram" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+nonebot2 = "^2.0.0"
+nonebot-adapter-onebot = "^2.0.0"
+httpx = ">=0.20.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
