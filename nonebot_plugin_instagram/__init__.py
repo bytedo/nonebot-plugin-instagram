@@ -22,14 +22,13 @@ __plugin_meta__ = PluginMetadata(
     name="Instagram RapidAPI 解析",
     description="基于 RapidAPI 的 Instagram 图文/视频解析插件 (支持合并转发)",
     usage="发送 ins <链接> 或直接发送包含 instagram.com 的链接",
-    type="application",  # 类型：application (应用) 或 library (库)
-    homepage="https://github.com/bytedo/nonebot-plugin-instagram",
+    type="application",
+    homepage="https://github.com/bytedo/nonebot-plugin-instagram", 
     config=Config,
     supported_adapters={"~onebot.v11"},
-    
     extra={
-        "author": "bytedo",
-        "version": "0.1.0",
+        "author": "bytedo", 
+        "version": "0.3.0",
     }
 )
 
@@ -57,50 +56,41 @@ async def process_request(bot: Bot, event: MessageEvent, url: str):
     data = await get_instagram_content(url)
     
     if data.get("status") == "error":
-        # 仅在解析失败时提示，其他情况静默
+        # 仅在解析失败时提示
         await bot.send(event, f"Ins解析失败: {data.get('text')}")
         return
 
-    # 2. 构建合并转发节点
-    nodes = []
-    
-    # -- 添加文案 --
-    caption = data.get("caption", "Instagram Share")
-    # 截断过长文案
-    if len(caption) > 100:
-        display_caption = caption[:100] + "..."
+    caption = data.get("caption", "")
+    if caption:
+        await bot.send(event, caption)
     else:
-        display_caption = caption
+        await bot.send(event, "Instagram Share")
 
-    nodes.append(
-        MessageSegment.node_custom(
-            user_id=int(bot.self_id),
-            nickname="Instagram",
-            content=display_caption
-        )
-    )
-
-    # -- 下载并添加媒体 --
+    # 2. 下载所有媒体资源
+    # 先将资源下载到内存中，方便后续根据数量决定发送方式
     items = data.get("items", [])
-    
+    media_resources = [] # 格式:List[(type, bytes)]
 
     for item in items:
         media_url = item.get("url")
         media_type = item.get("type")
         
-        # 下载二进制数据
         file_bytes = await download_media(media_url)
-        
-        if not file_bytes:
-            continue 
+        if file_bytes:
+            media_resources.append((media_type, file_bytes))
 
-        content = None
-        if media_type == "video":
-            content = MessageSegment.video(file_bytes)
-        else:
-            content = MessageSegment.image(file_bytes)
-        
-        if content:
+    if not media_resources:
+        await bot.send(event, "媒体文件下载失败或为空。")
+        return
+
+    count = len(media_resources)
+
+    # 资源超过3个合并转发
+    if count > 3:
+        nodes = []
+        for m_type, m_bytes in media_resources:
+            content = MessageSegment.video(m_bytes) if m_type == "video" else MessageSegment.image(m_bytes)
+            # 构建自定义节点
             nodes.append(
                 MessageSegment.node_custom(
                     user_id=int(bot.self_id),
@@ -108,28 +98,27 @@ async def process_request(bot: Bot, event: MessageEvent, url: str):
                     content=content
                 )
             )
+        
+        try:
+            if isinstance(event, GroupMessageEvent):
+                await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=nodes)
+            elif isinstance(event, PrivateMessageEvent):
+                await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=nodes)
+        except Exception as e:
+            logger.error(f"合并转发失败: {e}")
+            await bot.send(event, "合并转发失败，可能是文件过大或被风控。")
 
-    if len(nodes) <= 1:
-        # 只有文案节点，说明媒体全挂了
-        await bot.send(event, "媒体下载失败或为空，无法发送。")
-        return
-
-    # 3. 发送合并消息
-    try:
-        if isinstance(event, GroupMessageEvent):
-            await bot.call_api(
-                "send_group_forward_msg",
-                group_id=event.group_id,
-                messages=nodes
-            )
-        elif isinstance(event, PrivateMessageEvent):
-            await bot.call_api(
-                "send_private_forward_msg",
-                user_id=event.user_id,
-                messages=nodes
-            )
-    except FinishedException:
-        pass
-    except Exception as e:
-        logger.error(f"合并转发发送失败: {e}")
-        # 静默失败，或者你可以选择打印个简单的Log，不打扰用户
+    # 资源少于等于3个直接发送
+    else:
+        msg = Message()
+        for m_type, m_bytes in media_resources:
+            if m_type == "video":
+                msg.append(MessageSegment.video(m_bytes))
+            else:
+                msg.append(MessageSegment.image(m_bytes))
+        
+        try:
+            await bot.send(event, msg)
+        except Exception as e:
+            logger.error(f"直接发送失败: {e}")
+            await bot.send(event, "发送媒体失败，请查看后台日志。")
