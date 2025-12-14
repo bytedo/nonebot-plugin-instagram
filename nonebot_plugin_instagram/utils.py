@@ -1,14 +1,8 @@
 import httpx
-from nonebot import get_driver, logger
+from nonebot import get_plugin_config, logger
 from .config import Config
 
-# 加载全局配置
-try:
-    global_config = get_driver().config
-    conf = Config.parse_obj(global_config.dict())
-except Exception as e:
-    logger.warning(f"加载 Instagram 配置失败: {e}")
-    conf = Config()
+conf = get_plugin_config(Config)
 
 async def get_instagram_content(url: str) -> dict:
     """
@@ -24,7 +18,6 @@ async def get_instagram_content(url: str) -> dict:
         "x-rapidapi-host": conf.instagram_rapidapi_host
     }
     
-    # 修复 httpx 版本问题，使用 proxy (单数)
     current_proxy = conf.instagram_proxy
 
     async with httpx.AsyncClient(proxy=current_proxy, timeout=60.0) as client:
@@ -37,13 +30,12 @@ async def get_instagram_content(url: str) -> dict:
         except Exception as e:
             return {"status": "error", "text": str(e)}
 
-async def download_media(url: str) -> bytes:
+async def download_media(url: str) -> bytes | None:
     """
     下载媒体文件为二进制数据 (bytes)
     """
     current_proxy = conf.instagram_proxy
     
-    # 伪装 Headers，防止 Ins CDN 拒绝访问
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
         "Referer": "https://www.instagram.com/" 
@@ -69,7 +61,6 @@ def _parse_response(data: dict) -> dict:
     """
     logger.debug(f"RapidAPI Raw: {data}")
 
-    # 1. 尝试提取文案
     caption = ""
     try:
         if "caption" in data and data["caption"]:
@@ -88,7 +79,6 @@ def _parse_response(data: dict) -> dict:
     }
 
     try:
-        # A. 图集 (Sidecar)
         if "edge_sidecar_to_children" in data:
             edges = data["edge_sidecar_to_children"].get("edges", [])
             for edge in edges:
@@ -99,12 +89,10 @@ def _parse_response(data: dict) -> dict:
                     result["items"].append({"type": "image", "url": node.get("display_url")})
             return result
 
-        # B. 单视频
         if data.get("video_url"):
             result["items"].append({"type": "video", "url": data["video_url"]})
             return result
         
-        # C. 单图片
         if data.get("display_url"):
             result["items"].append({"type": "image", "url": data["display_url"]})
             return result
