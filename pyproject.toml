@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nonebot-plugin-instagram"
-version = "0.3.0"
+version = "0.3.1"
 description = "一个基于 RapidAPI 的 NoneBot2 Instagram 解析插件"
 authors = ["bytedo <49683326+bytedo@users.noreply.github.com>"]
 license = "MIT"
